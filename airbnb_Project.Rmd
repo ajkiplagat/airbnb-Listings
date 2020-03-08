@@ -1,0 +1,369 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document:
+    latex_engine: xelatex
+  html_notebook: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+# This chunk shows/hides the code in your final report. When echo = TRUE, the code
+# is shown in the report. When echo = FALSE, the code is hidden from the final report.
+# We would like to see your code, so please leave the setting as is during the course.
+# This chunk will not show up in your reports, so you can safely ignore its existence.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#First Chunk to start with - load libraries
+library("tidyverse")
+library("tidymodels")
+library("plotly")
+library("skimr")
+library("caret")
+library("tidytext")
+```
+
+```{r}
+# PART 1 - DATA PREPARATION
+# 1. Load data
+dfc <-read.csv('data/airbnb_mba.csv')
+```
+
+
+```{r}
+#skim(dfc)
+```
+
+```{r}
+# 2. Remove columns that will not be used in analysis
+
+dfc <- select(dfc, - 'Listing_ID', - 'summary', - 'description', -'latitude', -'longitude' )
+
+#skim(dfc)
+
+```
+
+
+```{r}
+dfc <- dfc %>% 
+  mutate( price = ifelse( price >= 500, NA, price )  )
+#skim(dfc)
+```
+
+```{r}
+# 3. Drop rows containing missing values. (Observations drop from 44,993 to 21,439)
+dfc <-dfc %>% 
+  drop_na()
+#skim(dfc)
+```
+
+```{r}
+# 4. Create new column for number of different ways host is verified  (num_host_verifications)
+
+dfc <- dfc %>%
+  mutate ( num_host_verifications = sapply(strsplit(as.character(host_verifications),","),FUN=function(x){length(x[x!="Null"])}))  
+#skim(dfc, 'num_host_verifications')
+```
+
+
+```{r}
+# 5. Create new columns for number of amenities  (num_amenities)
+dfc <- dfc %>%
+mutate (num_amenities =sapply(strsplit(as.character(amenities),","),FUN=function(x){length(x[x!="Null"])}))  
+skim(dfc, 'num_amenities')
+#skim(dfc)
+```
+
+
+```{r}
+# 6. Remove original amenities and host_verifications from data frame
+dfb <- select(dfc,-'amenities', -'host_verifications')
+skim(dfb)
+```
+```{r}
+# MARKET : Move low count markets  to "Other" category 
+dfb <- mutate(dfb, market = ifelse(market == "Fresno"|market == "San Antonio"|market == "Pittsburg"  |market == "South Florida"|market == "Gulf Coast"|market == "Coastal Orange County" |market == "London" | market== "Other (International)"| market == "Other (Domestic)" |market == "Agra" |market == "Nice" |market == "Providence", "Other" , as.character(market) ))
+```
+
+```{r}
+# PROPERTY LEVEL: Move low count property_type  to "Other" category 
+dfb <- mutate(dfb, property_type = ifelse(property_type == "Tipi"|property_type== "Yurt"|property_type == "Cave"  |property_type == "EarthHouse"|property_type == "Tiny house"|property_type == "Aparthotel" |market == "Plane" | property_type== "Barn", "Other" , as.character(property_type) ))
+```
+
+```{r}
+# Convert "No Refund" cancellation policy to "Strict"
+dfb <- mutate(dfb, cancellation_policy = ifelse( cancellation_policy == "no_refunds", "strict", as.character(cancellation_policy) ))
+
+#skim(dfb,'cancellation_policy')
+str(dfb)
+```
+
+```{r}
+#Redefine factors 
+
+cols <- c('high_booking_rate','bed_type','cancellation_policy','host_identity_verified','host_is_superhost','host_response_time','instant_bookable','market','property_type','room_type','host_has_profile_pic','require_guest_phone_verification','require_guest_profile_picture')
+
+ dfb <- dfb %>%
+   mutate_at(cols,funs(factor(.)))
+# skim(dfb)
+```
+
+
+```{r}
+# PART 2-MODEL FITTING
+# 1. Set Seed to 555
+set.seed(555)
+```
+
+
+```{r}
+# 2.Split Data into training and test sets
+dfTrain<-dfb %>% sample_frac(0.7)
+dfTest<-setdiff(dfb,dfTrain)
+```
+
+
+```{r}
+# 3a. Fit linear regression with all variables (get baseline R-squared)
+fitLin <- lm(price ~. + num_amenities^2 + num_host_verifications^2, data = dfTrain)
+summary(fitLin)
+```
+
+```{r}
+#3b. Test Performance: Linear regression with all variables 
+
+set.seed(555)
+resultsLin <- dfTest %>%
+mutate('predictedPrice' = predict(fitLin, dfTest) ) 
+
+metrics(resultsLin, truth = price, estimate = predictedPrice )
+
+```
+```{r}
+plot(fitLin)
+```
+
+```{r}
+#4a. Manual variable selection
+# 4b. Performance measure
+```
+
+```{r}
+#5a. Lasso Regression with 10 fold CV 
+
+lambdaValues <- 10^seq(-3, 3, length = 100)
+
+fitLASSO <- 
+   train(price ~ ., data = dfTrain, method='glmnet', trControl = trainControl(method='cv', number =10), tuneGrid = expand.grid(alpha=1, lambda = lambdaValues)) 
+
+#See how different lambda values drop variables: 
+plot(fitLASSO$finalModel, xvar="lambda", label=TRUE) 
+#See the final (optimum) lambda value: 
+fitLASSO$finalModel$lambdaOpt
+#See the variables plotted by importance (according to LASSO): 
+plot(varImp(fitLASSO))
+#See the variables listed by importance (according to LASSO) 
+varImp(fitLASSO,scale=FALSE)
+
+```
+
+```{r}
+# 5b. Calculate Lasso Performance 
+resultsLASSO <- dfTest %>%
+mutate('predictedPrice' = predict(fitLASSO, dfTest) )
+
+metrics(resultsLASSO, truth = price, estimate = predictedPrice )
+```
+
+```{r}
+#6a. kNN   CV-10 fold
+# set.seed(555)
+# fitkNN <- train( price ~ ., data = dfTrain, method='knn',trControl=trainControl(method='cv', number=10), tuneLength = 10)
+```
+
+```{r}
+#6b. kNN prediction performance 
+# resultskNN <- dfTest %>%
+# mutate('predictedPrice' = predict(fitkNN, dfTest) )
+# 
+# metrics(resultskNN, truth = price, estimate = predictedPrice )
+
+```
+
+```{r}
+#7a. Bagged Decision Tree  -> CRASHES WHEN RAN
+
+# set.seed(555)
+# fitTreeBag <- train( price ~ ., data=dfTrain, method='treebag', trControl=trainControl(method='cv', number=10))
+```
+
+```{r}
+#7b. Bagged Tree performance 
+
+#resultsTreeBag <- dfTest %>%
+#mutate('predictedPrice' = predict(fitTreeBag, dfTest) )
+#metrics(resultsTreeBag, truth = price, estimate = predictedPrice )
+```
+
+```{r}
+#Adaptive Boosting -> ERROR:WRONG MODEL FOR REGRESSION
+
+# resultsAdaptive <- train( price ~ ., data=dfTrain, method='ada',trControl= trainControl(method='cv', number=10))
+```
+
+```{r}
+#9a. Create ln(price) and fit linear regression, split dataset and fit linear regression
+dfbLn <- dfb %>% 
+  filter(price != 0) %>%
+mutate( ln_price = log(price)  )
+skim(dfbLn)
+```
+```{r}
+dfbLn[1:10,c("property_type","room_type", "market", "cancellation_policy","ln_price")]
+```
+
+```{r}
+set.seed(555)
+dfLogTrain<-dfbLn %>% sample_frac(0.7)
+dfLogTest<-setdiff(dfbLn,dfLogTrain)
+```
+
+```{r}
+dfLogTrain<-within(dfLogTrain,market<-relevel(market,ref = "Austin"))
+dfLogTrain<-within(dfLogTrain,property_type<-relevel(property_type,ref = "Apartment"))
+```
+
+```{r}
+# Fit Linear Regression on LN (PRICE)
+fitLinLog <- lm( ln_price ~.-price , data = dfLogTrain   )
+summary(fitLinLog)
+```
+
+
+```{r}
+# Performance of ln(price) linear regression # ERROR property_type has level issue
+
+resultsLinLog <- dfLogTest %>%
+mutate('predictedPrice' = predict(fitLinLog, dfLogTest) )
+metrics(resultsLinLog, truth = ln_price, estimate = predictedPrice )
+```
+
+
+```{r}
+plot(fitLinLog)
+
+```
+```{r}
+# a. Lasso Regression with 10 fold CV on LN(PRICE) & market+cancellation_policy removed
+
+lambdaValues <- 10^seq(-3, 3, length = 100)
+
+fitLASSO <- 
+   train(ln_price ~. -price, data = dfLogTrain, method='glmnet', trControl = trainControl(method='cv', number =10), tuneGrid = expand.grid(alpha=1, lambda = lambdaValues)) 
+
+#See how different lambda values drop variables: 
+plot(fitLASSO$finalModel, xvar="lambda", label=TRUE) 
+#See the final (optimum) lambda value: 
+fitLASSO$finalModel$lambdaOpt
+#See the variables plotted by importance (according to LASSO): 
+plot(varImp(fitLASSO))
+#See the variables listed by importance (according to LASSO) 
+varImp(fitLASSO,scale=FALSE)
+```
+
+```{r}
+#b. Lasso performance: y = ln(price)
+resultsLnLASSO <- dfLogTest %>%
+mutate('predictedPrice' = predict(fitLASSO, dfLogTest) )
+
+metrics(resultsLnLASSO, truth = ln_price, estimate = predictedPrice )
+
+```
+
+
+```{r}
+#kNN   CV-10 fold, y = ln (price)
+# set.seed(555)
+# fitkNN <- train(ln_price ~. -price, data = dfLogTrain, method='knn',trControl=trainControl(method='cv', number=10), tuneLength = 10)
+```
+
+```{r}
+#kNN prediction performance , y = ln (price)
+# resultskNN <- dfLogTest %>%
+# mutate('predictedPrice' = predict(fitkNN, dfLogTest) )
+# 
+# metrics(resultskNN, truth = ln_price, estimate = predictedPrice )
+
+```
+
+```{r}
+#Adaptive Boosting -> ERROR:WRONG MODEL FOR REGRESSION
+
+resultsAdaptive <- train( ln_price ~ .-price, data=dfLogTrain, method='ada',trControl= trainControl(method='cv', number=10))
+```
+
+
+```{r}
+fitTree <- train( ln_price ~ . -price, data=dfLogTrain, method='rpart', trControl=trainControl(method='cv', number=10))
+
+fitTree
+fitTree$finalModel
+plot(fitTree$finalModel, uniform=TRUE, margin=0.2)
+text(fitTree$finalModel)
+```
+
+
+```{r}
+library(rpart.plot)
+prp(fitTree$finalModel, type=5, extra=101, uniform=TRUE, varlen=0,
+box.palette="GnBu", branch.lty=3, shadow.col="gray", fallen.leaves=TRUE)
+
+```
+
+```{r}
+#summary(resultsTree)
+```
+
+```{r}
+# Test Performance Decision Tree
+resultsTree <- dfLogTest %>%
+mutate('predictedPrice' = predict(fitTree, dfLogTest) )
+metrics(resultsTree, truth = ln_price, estimate = predictedPrice )
+```
+
+```{r}
+
+#Random Forest, 10-fold CV ** STILL CRASHES WHEN RUNNING 
+#fitRandom <- train( ln_price ~ . -price, data=dfLogTrain, method='ranger')
+#, trControl=trainControl(method='cv', number=2))
+```
+
+```{r}
+#Bagged Tree ** CRASHES WHEN RAN 
+#fitBaggedTree <- train( ln_price ~. -price, data = dfLogTrain, method='treebag', trControl=trainControl(method='cv', number=10))
+
+```
+
+```{r}
+#Gradient Boosting  
+
+fitGradient <- train( ln_price ~. -price, data=dfLogTrain, method='gbm', trControl=trainControl(method='cv', number=10), verbose=FALSE)
+
+```
+```{r}
+# Test Performance Gradient Boosting
+resultsGradient <- dfLogTest %>%
+mutate('predictedPrice' = predict(fitGradient, dfLogTest) )
+metrics(resultsGradient, truth = ln_price, estimate = predictedPrice )
+```
+
+
+
+
+
+
