@@ -1,0 +1,355 @@
+---
+title: "R Notebook"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+  word_document: default
+always_allow_html: yes
+---
+```{r setup, include=FALSE}
+
+# This chunk shows/hides the code in your final report. When echo = TRUE, the code
+# is shown in the report. When echo = FALSE, the code is hidden from the final report.
+# We would like to see your code, so please leave the setting as is during the course.
+# This chunk will not show up in your reports, so you can safely ignore its existence.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#First Chunk to start with
+```
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+# Load Libraries
+library("tidyverse")
+library("tidymodels")
+library("plotly")
+library("skimr")
+library("caret")
+library("tidytext")
+```
+
+```{r}
+#Load airbnb data
+dfc <- read_csv('data/airbnb_mba.csv')
+```
+
+```{r}
+skim(dfc)
+```
+
+```{r}
+# PART 1 - DATA EXPLORATION
+# Price
+plot <- ggplot(data = dfc, aes(x = price)) + geom_histogram (binwidth = 100, fill = "lightblue",color="black")
+plot
+```
+
+```{r}
+plot <- ggplot(data = dfc, aes( y=price)) + geom_boxplot ( fill = "lightblue",color="black")
+ggplotly(plot)
+```
+
+```{r}
+#Host ID Verified - boxplot
+plot <- ggplot(data = dfc, aes(x = host_identity_verified , y= price)) + geom_boxplot(fill="lightblue", color="black")
+(plot)
+```
+
+```{r}
+# Host has profile pic
+plot <- ggplot(data = dfc, aes(x = host_has_profile_pic , y= price)) + geom_boxplot(fill="lightblue", color="black")
+(plot) +coord_flip()
+```
+
+```{r}
+# Host Istant Book - boxplot
+plotInstant <- ggplot(data = dfc, aes(x =   instant_bookable , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+(plotInstant)
+
+```
+```{r}
+# High Booking Rate
+
+plot<- ggplot(data = dfc, aes(x =   as.factor(high_booking_rate) , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+plot
+```
+
+```{r}
+# Bed-type
+
+plot<- ggplot(data = dfc, aes(x = bed_type , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+plot
+```
+
+```{r}
+# Bed-type
+
+plot<- ggplot(data = dfc, aes(x = cancellation_policy , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+plot
+```
+
+
+```{r}
+plot<- ggplot(data = dfc, aes(x = require_guest_phone_verification , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+plot
+
+```
+
+
+```{r}
+plot<- ggplot(data = dfc, aes(x = requires_license , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+plot
+```
+
+
+```{r}
+plot<- ggplot(data = dfc, aes(x = room_type , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+ggplotly(plot)
+```
+
+```{r}
+plot <- ggplot(data = dfc, aes(x = reorder(market, price, FUN=mean) , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+(plot)
+
+plot + coord_flip()
+```
+
+```{r}
+plot <- ggplot(data = dfc, aes(x = reorder(property_type, price, FUN=median) , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+
+
+(plot)
+
+plot + coord_flip()
+```
+
+
+
+```{r}
+# Availability - scatter plot
+
+plot <- dfc %>%
+ggplot (aes(x = availability_30 , y= price)) +
+geom_point( ) 
+plot
+
+```
+```{r}
+# Extra People - scatter plot 
+
+plot <- dfc %>%
+ggplot (aes(x = extra_people , y= price, color = security_deposit)) +
+geom_point( ) 
+plot
+
+```
+
+
+```{r}
+# Host is Super host - boxplot
+
+plot <- ggplot(data = dfc, aes(x = host_is_superhost , y= price)) + geom_boxplot(fill="lightblue", color="black")
+
+
+ggplotly(plot)
+
+```
+```{r}
+
+# Host listing count - scatter plot
+
+plot  <- dfc %>%
+ggplot (aes(x = host_listings_count , y= price, color = host_is_superhost)) +
+geom_point( ) 
+plot
+
+```
+
+```{r}
+#Histogram - Accomodates
+plot <- ggplot(data = dfc, aes(x = accommodates)) + geom_histogram (binwidth = 1, fill = "lightblue",color="black")
+plot
+```
+```{r}
+# price vs. accomodates
+plot  <- dfc %>%
+ggplot (aes(x = accommodates , y= price, )) +
+geom_point( ) 
+plot
+
+```
+```{r}
+#Histogram - availability 
+plot <- ggplot(data = dfc, aes(x = availability_30)) + geom_histogram (binwidth = 1, fill = "lightblue",color="black")
+plot
+```
+```{r}
+#price vs. availability
+plot  <- dfc %>%
+ggplot (aes(x = availability_30 , y= price, )) +
+geom_point( ) 
+plot
+
+```
+
+```{r}
+# Host response time - 
+plot <- ggplot(data = dfc, aes(x = host_response_time , y= price)) + geom_boxplot(fill="lightblue", color="black")
+ggplotly(plot)
+```
+
+```{r}
+#histogram bathrooms
+plot <- ggplot(data = dfc, aes(x = security_deposit)) + geom_histogram (binwidth = 100, fill = "lightblue",color="black")
+plot
+```
+
+
+```{r}
+plot  <- dfc %>%
+ggplot (aes(x = security_deposit , y= price, )) +
+geom_point( ) 
+plot
+
+```
+
+
+```{r}
+# Guest Pic
+plot <- ggplot(data = dfc, aes(x = require_guest_profile_picture , y= price)) + geom_boxplot(fill="lightblue", color="black")
+ggplotly(plot)
+
+```
+
+```{r}
+# Booking Rate
+plot <- ggplot(data = dfc, aes(x = as.factor(high_booking_rate) , y= price)) + geom_boxplot(fill="lightblue", color="black")
+ggplotly(plot)
+```
+
+```{r}
+#plot  <- dfc %>%
+#ggplot (aes(x = beds , y= price) )+
+#geom_point( ) 
+#ggplotly(plot)
+```
+
+```{r}
+# PART 2 - DATA ANALYSIS 
+#Create New Data Frame
+set.seed(555)
+```
+
+```{r}
+dfb <- dfc %>%
+  select(price, accommodates,beds,bed_type, bedrooms, bathrooms,cleaning_fee,host_has_profile_pic,market,maximum_nights, minimum_nights, property_type, room_type )
+summary(dfb)
+```
+
+```{r}
+skim(dfb)
+```
+
+```{r}
+# Define factors
+cols <- c('bed_type','market','property_type','room_type','host_has_profile_pic')
+dfb <- dfb %>%
+  mutate_at(cols,funs(factor(.)))
+```
+
+```{r}
+set.seed(555)
+```
+
+```{r}
+#Split data
+dfTrain <- dfb %>% 
+  sample_frac(0.7)
+dfTest <- setdiff(dfb,dfTrain)
+```
+
+```{r}
+str(dfb)
+```
+
+```{r}
+# Step 1. Fit Linear Regression    
+fitLin <- lm(price ~ . , data = dfTrain)
+summary(fitLin)
+```
+
+```{r}
+#Lasso to eliminate variables 
+dfTrain <-dfTrain %>% 
+  drop_na()
+lambdaValues <- 10^seq(-3, 3, length = 100)
+resultLASSO <- 
+   train(price ~ ., data=dfTrain, method='glmnet', trControl = trainControl(method='cv', number =10), tuneGrid = expand.grid(alpha=1, lambda = lambdaValues))  #%>%
+```
+
+```{r}
+varImp(resultLASSO) 
+#predict(dfTest, type='raw') %>%
+#bind_cols(dfTest, predictedClass=.)
+#resultLASSO %>% 
+#  xtabs(~predictedClass+ price, .) %>% 
+#  confusionMatrix(positive = '1')
+```
+
+```{r}
+# Run Regression with only SIGNIFICANT (less than 0.05) p-values
+fitLin2 <- lm (price ~accommodates+ bedrooms+ bathrooms+ cleaning_fee+ property_type+ room_type, data = dfTrain)
+summary(fitLin2)
+```
+
+```{r}
+#START HERE
+# Load AirBNB data set 
+dfc <- read_csv('data/airbnb_mba.csv')
+```
+
+```{r}
+# Split dfc(entire data set)
+#dfc <- dfc %>%   # To Be used if other N/A Issues occur 
+#  drop_na()
+set.seed(555)
+dfTrain <- dfc %>% sample_frac(0.7)
+dfTest <- setdiff(dfc,dfTrain)
+```
+
+```{r}
+df <- read.csv("data/airbnb_mba.csv")
+df <- df %>% 
+ mutate(amenities = as.character(amenities))
+```
+
+```{r}
+#head(df, 20) 
+skim(df)
+```
+
+```{r}
+#Tokenize the data and remove the stop words
+dfTidy <- dfAmm %>%
+  unnest_tokens(word, amenities) %>% 
+  #anti_join(stop_words) %>%
+ # select(Listing_ID, amenities)
+head(dfTidy,20)
+```
